@@ -1,12 +1,26 @@
 @Library('Shared') _
 pipeline {
-    agent any
+    agent {label 'Node'}
     
     environment{
         SONAR_HOME = tool "Sonar"
     }
+    
+    parameters {
+        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Setting docker image for latest push')
+        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Setting docker image for latest push')
+    }
+    
     stages {
-        
+        stage("Validate Parameters") {
+            steps {
+                script {
+                    if (params.FRONTEND_DOCKER_TAG == '' || params.BACKEND_DOCKER_TAG == '') {
+                        error("FRONTEND_DOCKER_TAG and BACKEND_DOCKER_TAG must be provided.")
+                    }
+                }
+            }
+        }
         stage("Workspace cleanup"){
             steps{
                 script{
@@ -18,20 +32,7 @@ pipeline {
         stage('Git: Code Checkout') {
             steps {
                 script{
-                    code_checkout("https://github.com/DevMadhup/wanderlust.git","devops")
-                }
-            }
-        }
-        
-        stage("OWASP: Dependency check"){
-            steps{
-                script{
-                    owasp_dependency()
-                }
-            }
-            post{
-                success{
-                    archiveArtifacts artifacts: '**/dependency-check-report.xml', followSymlinks: false, onlyIfSuccessful: true
+                    code_checkout("https://github.com/LondheShubham153/Wanderlust-Mega-Project.git","main")
                 }
             }
         }
@@ -40,6 +41,14 @@ pipeline {
             steps{
                 script{
                     trivy_scan()
+                }
+            }
+        }
+
+        stage("OWASP: Dependency check"){
+            steps{
+                script{
+                    owasp_dependency()
                 }
             }
         }
@@ -66,7 +75,7 @@ pipeline {
                     steps {
                         script{
                             dir("Automations"){
-                                sh "bash updateBackend.sh"
+                                sh "bash updatebackendnew.sh"
                             }
                         }
                     }
@@ -76,7 +85,7 @@ pipeline {
                     steps {
                         script{
                             dir("Automations"){
-                                sh "bash updateFrontend.sh"
+                                sh "bash updatefrontendnew.sh"
                             }
                         }
                     }
@@ -87,13 +96,13 @@ pipeline {
         stage("Docker: Build Images"){
             steps{
                 script{
-                    dir('backend'){
-                        docker_build("backend-wanderlust","test-image-donot-use","madhupdevops")
-                    }
+                        dir('backend'){
+                            docker_build("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}","trainwithshubham")
+                        }
                     
-                    dir('frontend'){
-                        docker_build("frontend-wanderlust","test-image-donot-use","madhupdevops")
-                    }
+                        dir('frontend'){
+                            docker_build("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}","trainwithshubham")
+                        }
                 }
             }
         }
@@ -101,18 +110,18 @@ pipeline {
         stage("Docker: Push to DockerHub"){
             steps{
                 script{
-                    docker_push("backend-wanderlust","test-image-donot-use","madhupdevops") 
-                    docker_push("frontend-wanderlust","test-image-donot-use","madhupdevops")
+                    docker_push("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}","trainwithshubham") 
+                    docker_push("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}","trainwithshubham")
                 }
             }
         }
     }
-    
     post{
         success{
+            archiveArtifacts artifacts: '*.xml', followSymlinks: false
             build job: "Wanderlust-CD", parameters: [
-                string(name: 'FRONTEND_DOCKER_TAG', value: "test-image-donot-use"),
-                string(name: 'BACKEND_DOCKER_TAG', value: "test-image-donot-use")
+                string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
+                string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
             ]
         }
     }
